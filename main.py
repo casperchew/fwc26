@@ -2,124 +2,216 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
+import sklearn
+from sklearn.neural_network import MLPRegressor
+import streamlit as st
+from sklearn.compose import make_column_selector, make_column_transformer
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import FunctionTransformer, make_pipeline
+from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder
 
-matches = pd.read_csv("data/WorldCupMatches.csv")
-matches.columns = matches.columns.str.strip().str.lower().str.replace(" ", "_")
-matches = matches.drop(
-    [
-        "stadium",
-        "city",
+st.set_page_config(page_title="FIFA World Cup 2026 Prediction Model", layout="wide")
+
+
+@st.cache_data
+def load_manager_appearances():
+    manager_appearances = pd.read_csv(
+        "worldcup/data-csv/manager_appearances.csv"
+    ).dropna()
+
+    return manager_appearances
+
+
+@st.cache_data
+def load_matches():
+    matches = pd.read_csv("worldcup/data-csv/matches.csv").dropna()
+
+    matches = matches[~matches.tournament_name.str.contains("Women")]
+
+    def str_to_datetime(s):
+        return datetime.strptime(s, "%Y-%m-%d")
+
+    matches.match_date = matches.match_date.apply(str_to_datetime)
+    matches["match_year"] = matches.match_date.dt.year
+    matches["match_month"] = matches.match_date.dt.month
+    matches["match_day"] = matches.match_date.dt.day
+    matches["match_hour"] = matches.match_time.str.split(":").str[0].astype(int)
+    matches["match_minute"] = matches.match_time.str.split(":").str[1].astype(int)
+
+    return matches[
+        [
+            "tournament_name",
+            "match_id",
+            "stage_name",
+            "match_year",
+            "match_month",
+            "match_day",
+            "match_hour",
+            "match_minute",
+            "stadium_name",
+            "city_name",
+            "country_name",
+            "home_team_name",
+            "away_team_name",
+            "home_team_score",
+            "away_team_score",
+        ]
+    ]
+
+
+@st.cache_data
+def load_player_appearances():
+    player_appearances = pd.read_csv(
+        "worldcup/data-csv/player_appearances.csv"
+    ).dropna()
+
+    return player_appearances
+
+
+matches = load_matches()
+
+# manager_appearances = load_manager_appearances()
+# manager_appearances_grouped = manager_appearances.groupby(["match_id", "team_name"])[
+#     "manager_id"
+# ].apply(list)
+# mlb = MultiLabelBinarizer()
+# manager_appearances_binarized = mlb.fit_transform(manager_appearances_grouped)
+# manager_appearances_binarized = pd.DataFrame(
+#     manager_appearances_binarized,
+#     columns=mlb.classes_,
+#     index=manager_appearances_grouped.index,
+# ).reset_index()
+#
+# st.dataframe(manager_appearances)
+#
+# manager_appearances_binarized["home_team_name"] = manager_appearances_binarized.team_name
+# manager_appearances_binarized["away_team_name"] = manager_appearances_binarized.team_name
+#
+# manager_appearances = pd.concat([manager_appearances, manager_appearances_binarized])
+#
+# data = pd.merge(matches, manager_appearances, on=["match_id", "home_team_name"])
+#
+# st.dataframe(data)
+
+st.sidebar.header("Select columns:")
+columns = {
+    column: True
+    for column in [
+        "stage_name",
+        "match_year",
+        "match_month",
+        "match_day",
+        "match_hour",
+        "match_minute",
         "home_team_name",
         "away_team_name",
-        "win_conditions",
-        "attendance",
-        "referee",
-        "assistant_1",
-        "assistant_2",
-    ],
-    axis=1,
-)
-matches = matches.dropna()
-matches[
-    [
-        "year",
-        "home_team_goals",
-        "away_team_goals",
-        "half-time_home_goals",
-        "half-time_away_goals",
-        "roundid",
-        "matchid",
     ]
-] = matches[
-    [
-        "year",
-        "home_team_goals",
-        "away_team_goals",
-        "half-time_home_goals",
-        "half-time_away_goals",
-        "roundid",
-        "matchid",
-    ]
-].astype(
-    int
-)
+}
 
+# for column in matches.columns.drop(
+#     [
+#         "score",
+#         "home_team_score",
+#         "away_team_score",
+#         "home_team_score_margin",
+#         "away_team_score_margin",
+#         "extra_time",
+#         "penalty_shootout",
+#         "score_penalties",
+#         "home_team_score_penalties",
+#         "away_team_score_penalties",
+#         "result",
+#         "home_team_win",
+#         "away_team_win",
+#         "draw",
+#     ]
+# ):
+for column in matches.columns:
+    columns[column] = st.sidebar.checkbox(column, value=columns.get(column, False))
 
-def datetime_converter(x):
-    try:
-        return datetime.strptime(x, "%d %b %Y - %H:%M ")
-    except ValueError:
-        return datetime.strptime(x, "%d %B %Y - %H:%M ")
+data = matches
 
-
-matches.datetime = matches.datetime.apply(datetime_converter)
-matches["month"] = matches.datetime.dt.month
-matches["day"] = matches.datetime.dt.day
-matches = matches.drop("datetime", axis=1)
-
-matches.stage = matches.stage.replace(r"Group[\w\W]*", "Groups", regex=True)
-matches.home_team_initials = matches.home_team_initials.astype("category")
-matches.away_team_initials = matches.away_team_initials.astype("category")
-matches["result"] = np.clip(matches.home_team_goals - matches.away_team_goals, -1, 1)
-
-
-X = matches[
-    [
-        "year",
-        "month",
-        "day",
-        "half-time_home_goals",
-        "half-time_away_goals",
-        "home_team_initials",
-        "away_team_initials",
-    ]
-]
-# y = matches.result
-y = matches[["home_team_goals", "away_team_goals"]]
+X = data[[column for column in columns if columns[column]]]
+y = data[["home_team_score", "away_team_score"]]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
 
-categorical_features = ["home_team_initials", "away_team_initials"]
-preprocessor = ColumnTransformer(
-    transformers=[
+mlb = MultiLabelBinarizer()
+
+clf = make_pipeline(
+    make_column_transformer(
         (
-            "cat",
-            OneHotEncoder(handle_unknown="ignore", sparse_output=False),
-            categorical_features,
-        )
-    ],
-    remainder="passthrough",
+            FunctionTransformer(lambda x: np.sin(x / 12 * 2 * np.pi)),
+            make_column_selector("match_month"),
+        ),
+        (
+            FunctionTransformer(lambda x: np.sin(x / 31 * 2 * np.pi)),
+            make_column_selector("match_day"),
+        ),
+        (
+            FunctionTransformer(lambda x: np.sin(x / 24 * 2 * np.pi)),
+            make_column_selector("match_hour"),
+        ),
+        (
+            FunctionTransformer(lambda x: np.sin(x / 60 * 2 * np.pi)),
+            make_column_selector("match_minute"),
+        ),
+        remainder="passthrough",
+    ),
+    OneHotEncoder(handle_unknown="warn"),
+    LinearRegression(),
+    # RandomForestRegressor(random_state=0),
+    # MLPRegressor(max_iter=100000),
 )
 
-clf = Pipeline(
-    [
-        ("prep", preprocessor),
-        # ("model", OneVsOneClassifier(LinearSVC(random_state=0))),
-        ("model", LinearRegression()),
-    ]
-)
+clf.fit(X_train, y_train)
 
-# clf.fit(X_train, y_train)
-clf.fit(X, y)
+obs = {}
+if columns["stage_name"]:
+    obs["stage_name"] = st.selectbox(
+        label="",
+        options=matches.stage_name.unique(),
+        index=None,
+        placeholder="Select Stage",
+    )
 
-print(f"Accuracy: {clf.score(X_test, y_test)}")
+if (
+    columns["match_year"]
+    or columns["match_month"]
+    or columns["match_day"]
+    or columns["match_hour"]
+    or columns["match_minute"]
+):
+    match_datetime = st.datetime_input(label="")
+    obs["match_year"] = match_datetime.year
+    obs["match_month"] = match_datetime.month
+    obs["match_day"] = match_datetime.day
+    obs["match_hour"] = match_datetime.hour
+    obs["match_minute"] = match_datetime.minute
 
-current_match = pd.DataFrame(
-    {
-        "year": 2026,
-        "month": 6,
-        "day": 30,
-        "half-time_home_goals": 0,
-        "half-time_away_goals": 0,
-        "home_team_initials": "NED",
-        "away_team_initials": "MOR",
-    },
-    index=[0],
-)
+col1, col2 = st.columns(2)
 
-print(clf.predict(current_match))
+with col1:
+    obs["home_team_name"] = st.selectbox(
+        label="Home",
+        options=sorted(matches.home_team_name.unique()),
+    )
+
+with col2:
+    obs["away_team_name"] = st.selectbox(
+        label="Away",
+        options=sorted(matches.away_team_name.unique()),
+    )
+
+home_team_score, away_team_score = clf.predict(pd.DataFrame(obs, index=[0]))[0]
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.metric(label=obs["home_team_name"], value=home_team_score)
+
+with col2:
+    st.metric(label=obs["away_team_name"], value=away_team_score)

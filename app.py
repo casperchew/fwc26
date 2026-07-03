@@ -199,17 +199,32 @@ for i, col in enumerate(cols):
         schedule = load_schedule()
         pred = clf.predict(schedule)
         schedule_reversed = home_away_swap(schedule)
-        pred_reversed = clf.predict(schedule_reversed)[:,::-1]
+        pred_reversed = clf.predict(schedule_reversed)[:, ::-1]
 
         pred = np.round(np.mean([pred, pred_reversed], axis=0))
 
         # full_results_2026 = pd.concat([schedule, pd.DataFrame(pred, columns=["home_score_pred", "away_score_pred"])], axis=1)
         # full_results_2026
 
-        pred_results = np.apply_along_axis(lambda x: 1 if x[0] > x[1] else 0 if x[0] == x[1] else -1, 1, pred).reshape(-1, 1)
-        pred = pd.DataFrame(np.concatenate([pred, pred_results], axis=1), columns=["home_score", "away_score", "result"])
-        correct = sum((pred[["home_score", "away_score"]] == schedule[["home_score", "away_score"]]).all(axis=1))
-        half_correct = sum((pred[["home_score", "away_score"]] == schedule[["home_score", "away_score"]]).any(axis=1))
+        pred_results = np.apply_along_axis(
+            lambda x: 1 if x[0] > x[1] else 0 if x[0] == x[1] else -1, 1, pred
+        ).reshape(-1, 1)
+        pred = pd.DataFrame(
+            np.concatenate([pred, pred_results], axis=1),
+            columns=["home_score", "away_score", "result"],
+        )
+        correct = sum(
+            (
+                pred[["home_score", "away_score"]]
+                == schedule[["home_score", "away_score"]]
+            ).all(axis=1)
+        )
+        half_correct = sum(
+            (
+                pred[["home_score", "away_score"]]
+                == schedule[["home_score", "away_score"]]
+            ).any(axis=1)
+        )
         correct_result = sum((pred["result"] == schedule["result"]))
         correct
         half_correct

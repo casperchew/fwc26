@@ -16,6 +16,7 @@ def home_away_swap(data):
 
     return data_reversed
 
+
 def home_away_reverser(data):
     data_reversed = data.rename(
         columns={
