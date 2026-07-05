@@ -3,40 +3,25 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import streamlit as st
+import xgboost as xgb
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import (
-    GradientBoostingClassifier,
-    GradientBoostingRegressor,
-    RandomForestClassifier,
-    RandomForestRegressor,
-)
-from sklearn.linear_model import (
-    ElasticNet,
-    HuberRegressor,
-    Lasso,
-    LinearRegression,
-    LogisticRegression,
-    RANSACRegressor,
-    Ridge,
-)
-from sklearn.model_selection import train_test_split
-from sklearn.multiclass import OneVsOneClassifier, OneVsRestClassifier
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.neural_network import MLPClassifier, MLPRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNet, LinearRegression
+from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from utils import home_away_reverser, home_away_swap
+from utils import home_away_reverser
 
 st.set_page_config(page_title="FIFA World Cup 2026 Prediction Model", layout="wide")
+
+LATEST = False
 
 
 @st.cache_data
 def load_matches():
     matches = pd.read_csv("data/matches_1930_2022.csv")
     matches.columns = matches.columns.str.strip().str.lower().str.replace(" ", "_")
-    matches = matches[matches.year > 2000]
     matches = matches.drop(
         [
             "home_xg",
@@ -57,7 +42,6 @@ def load_matches():
         axis=1,
     )
     matches.year -= 2026
-    matches["result"] = np.clip(matches.home_score - matches.away_score, -1, 1)
 
     def datetime_converter(x):
         return datetime.strptime(x, "%Y-%m-%d")
@@ -70,8 +54,21 @@ def load_matches():
 
 
 @st.cache_data
-def load_schedule():
-    schedule = pd.read_csv("data/schedule_2026.csv")
+def load_knockout():
+    knockout = pd.read_csv("data/knockout_2026.csv")
+    knockout.columns = knockout.columns.str.strip().str.lower().str.replace(" ", "_")
+    knockout.year -= 2026
+
+    return knockout
+
+
+@st.cache_data
+def load_schedule(latest=True):
+    if latest:
+        schedule = pd.read_csv("data/schedule_2026_latest.csv")
+    else:
+        schedule = pd.read_csv("data/schedule_2026.csv")
+
     schedule.columns = schedule.columns.str.strip().str.lower().str.replace(" ", "_")
 
     def datetime_converter(x):
@@ -82,38 +79,28 @@ def load_schedule():
     schedule["month"] = schedule.date.dt.month
     schedule["day"] = schedule.date.dt.day
 
-    schedule["result"] = np.clip(schedule.home_score - schedule.away_score, -1, 1)
-
     return schedule
 
 
 matches = load_matches()
+schedule = load_schedule(latest=LATEST)
+
+# matches = pd.concat([matches, schedule])[
+#     ["home_team", "away_team", "year", "home_score", "away_score"]
+# ]
+matches = schedule[["home_team", "away_team", "year", "home_score", "away_score"]]
+
+matches = matches.replace("Bosnia-Herzegovina", "Bosnia and Herzegovina")
+matches = matches.replace("Czech Republic", "Czechia")
 
 st.sidebar.header("Select columns:")
-columns = {
-    column: True for column in ["home_team", "away_team", "year", "month", "day"]
-}
+columns = {column: True for column in ["home_team", "away_team", "year"]}
 
-for column in matches.columns.drop(["home_score", "away_score", "result"]):
+for column in matches.columns.drop(["home_score", "away_score"]):
     columns[column] = st.sidebar.checkbox(column, value=columns.get(column, False))
 
 X = matches[[column for column in columns if columns[column]]]
-
-
-prediction_type = st.selectbox(
-    label="Select prediction:", options=["Scoreline", "Result"]
-)
-
-
-y_columns = (
-    ["home_score", "away_score"] if prediction_type == "Scoreline" else ["result"]
-)
-y = matches[y_columns]
-
-X_train, X_test, y_train, y_test = map(
-    home_away_reverser, train_test_split(X, y, random_state=0)
-)
-
+y = matches[["home_score", "away_score"]]
 X, y = map(home_away_reverser, [X, y])
 
 categorical_features = [
@@ -133,33 +120,23 @@ preprocessor = ColumnTransformer(
     remainder="passthrough",
 )
 
-if prediction_type == "Scoreline":
-    models = {
-        "Linear Regression": LinearRegression(),
-        "Lasso": Lasso(),
-        "Ridge": Ridge(),
-        "ElasticNet": ElasticNet(),
-        "Huber Regressor": MultiOutputRegressor(HuberRegressor(max_iter=1000)),
-        "RANSAC Regressor": RANSACRegressor(random_state=0),
-        "Random Forest Regressor": RandomForestRegressor(random_state=0),
-        "Gradient Boosing Regressor": MultiOutputRegressor(
-            GradientBoostingRegressor(random_state=0)
-        ),
-        "KNN Regressor": KNeighborsRegressor(),
-        "Neural Network": MLPRegressor(max_iter=100000, random_state=0),
-    }
+models = {
+    "Linear Regression": LinearRegression(),
+    "Random Forest Regressor": RandomForestRegressor(random_state=0),
+    "XGBoost": xgb.XGBRegressor(),
+    "Neural Network": MLPRegressor(
+        max_iter=1000000,
+        random_state=0,
+    ),
+}
 
-elif prediction_type == "Result":
-    models = {
-        "Random Forest Classifier": RandomForestClassifier(random_state=0),
-        # "Logistic Regression": LogisticRegression(),
-        # "Neural Network Classifier": MLPClassifier(random_state=0),
-        # "1vRest Classifier": OneVsRestClassifier(LinearRegression()),
-        # "Gradient Boosing Classifier": GradientBoostingClassifier(random_state=0),
-        # "1v1 Classifier": OneVsOneClassifier(LinearRegression()),
-    }
 
 st.session_state.obs = {}
+
+if LATEST:
+    st.subheader("Using latest data")
+else:
+    st.subheader("Using groups data")
 
 col1, col2 = st.columns(2)
 
@@ -173,16 +150,11 @@ with col2:
         label="Away", options=sorted(matches.away_team.unique())
     )
 
-if columns["round"]:
-    st.session_state.obs["round"] = st.selectbox(
-        label="Round", options=(matches["round"].unique())
-    )
-
-if columns["year"] or columns["month"] or columns["day"]:
-    st.session_state.obs["selected_datetime"] = st.datetime_input("Date of match")
-    st.session_state.obs["year"] = st.session_state.obs["selected_datetime"].year - 2026
-    st.session_state.obs["month"] = st.session_state.obs["selected_datetime"].month
-    st.session_state.obs["day"] = st.session_state.obs["selected_datetime"].day
+if columns["year"]:
+    selected_datetime = st.datetime_input("Date of match")
+    st.session_state.obs["year"] = selected_datetime.year - 2026
+    st.session_state.obs["month"] = selected_datetime.month
+    st.session_state.obs["day"] = selected_datetime.day
 
 cols = st.columns(len(models))
 for i, col in enumerate(cols):
@@ -196,80 +168,121 @@ for i, col in enumerate(cols):
         with st.container(height=2**7):
             st.write(model_name)
 
-        schedule = load_schedule()
-        pred = clf.predict(schedule)
-        schedule_reversed = home_away_swap(schedule)
-        pred_reversed = clf.predict(schedule_reversed)[:, ::-1]
+        pred = clf.predict(pd.DataFrame(st.session_state.obs, index=[0]))[0]
 
-        pred = np.round(np.mean([pred, pred_reversed], axis=0))
+        obs = st.session_state.obs.copy()
+        obs["home_team"], obs["away_team"] = obs["away_team"], obs["home_team"]
+        pred_reversed = clf.predict(pd.DataFrame(obs, index=[0]))[0][::-1]
 
-        # full_results_2026 = pd.concat([schedule, pd.DataFrame(pred, columns=["home_score_pred", "away_score_pred"])], axis=1)
-        # full_results_2026
+        home_score = np.mean([pred[0], pred_reversed[0]])
+        away_score = np.mean([pred[1], pred_reversed[1]])
 
-        pred_results = np.apply_along_axis(
-            lambda x: 1 if x[0] > x[1] else 0 if x[0] == x[1] else -1, 1, pred
-        ).reshape(-1, 1)
-        pred = pd.DataFrame(
-            np.concatenate([pred, pred_results], axis=1),
-            columns=["home_score", "away_score", "result"],
-        )
-        correct = sum(
+        st.header("Predicted Scoreline:")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric(
+                label=f"{st.session_state.obs['home_team']}",
+                value=np.round(home_score).astype(int),
+            )
+
+        with col2:
+            st.metric(
+                label=f"{st.session_state.obs['away_team']}",
+                value=np.round(away_score).astype(int),
+            )
+
+        st.header("Predicted Goals:")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric(
+                label=f"{st.session_state.obs['home_team']}",
+                value=np.round(home_score, 2),
+            )
+
+        with col2:
+            st.metric(
+                label=f"{st.session_state.obs['away_team']}",
+                value=np.round(away_score, 2),
+            )
+
+        st.header("Knockout predictions:")
+
+        knockout = load_knockout()
+
+        rounds = iter(["RO32", "RO16", "QF", "SF", "Finals"])
+        while not knockout.empty:
+            knockout_preds = clf.predict(knockout)
+            knockout_preds_reversed = knockout.copy()
             (
-                pred[["home_score", "away_score"]]
-                == schedule[["home_score", "away_score"]]
-            ).all(axis=1)
-        )
-        half_correct = sum(
-            (
-                pred[["home_score", "away_score"]]
-                == schedule[["home_score", "away_score"]]
-            ).any(axis=1)
-        )
-        correct_result = sum((pred["result"] == schedule["result"]))
-        correct
-        half_correct
-        correct_result
+                knockout_preds_reversed["home_team"],
+                knockout_preds_reversed["away_team"],
+            ) = (
+                knockout_preds_reversed["away_team"],
+                knockout_preds_reversed["home_team"],
+            )
+            knockout_preds_reversed = clf.predict(knockout_preds_reversed)[:, ::-1]
 
-        if prediction_type == "Scoreline":
-            pred = clf.predict(pd.DataFrame(st.session_state.obs, index=[0]))[0]
+            knockout[["home_score", "away_score"]] = (
+                knockout_preds + knockout_preds_reversed
+            ) / 2
 
-            obs = st.session_state.obs.copy()
-            obs["home_team"], obs["away_team"] = obs["away_team"], obs["home_team"]
-            pred_reversed = clf.predict(pd.DataFrame(obs, index=[0]))[0][::-1]
+            try:
+                r = next(rounds)
+            except:
+                break
 
-            home_score = np.round(np.mean([pred[0], pred_reversed[0]])).astype(int)
-            away_score = np.round(np.mean([pred[1], pred_reversed[1]])).astype(int)
+            # if r in ["Finals"]:
+            if True:
+                st.subheader(r)
+                for idx, row in knockout.iterrows():
+                    if r == "Finals" and idx == 1:
+                        st.subheader("3rd Place Match")
+                    col1, col2 = st.columns(2)
 
-            st.subheader("Predicted Score:")
+                    with col1:
+                        st.metric(
+                            label=row.home_team, value=np.round(row.home_score, 2)
+                        )
 
-            col1, col2 = st.columns(2)
+                    with col2:
+                        st.metric(
+                            label=row.away_team, value=np.round(row.away_score, 2)
+                        )
 
-            with col1:
-                st.metric(
-                    label=f"{st.session_state.obs['home_team']}", value=home_score
+            if knockout.shape[0] == 1:
+                break
+
+            knockout.loc[knockout.home_score >= knockout.away_score, "winner"] = (
+                knockout.home_team
+            )
+            knockout.loc[knockout.home_score < knockout.away_score, "winner"] = (
+                knockout.away_team
+            )
+
+            winners = list(knockout.winner)
+
+            if r == "SF":
+                knockout.loc[knockout.home_score >= knockout.away_score, "loser"] = (
+                    knockout.away_team
                 )
-
-            with col2:
-                st.metric(
-                    label=f"{st.session_state.obs['away_team']}", value=away_score
+                knockout.loc[knockout.home_score < knockout.away_score, "loser"] = (
+                    knockout.home_team
                 )
+                winners += list(knockout.loser)
 
-        elif prediction_type == "Result":
-            st.subheader("Predicted Result:")
-            pred = clf.predict(pd.DataFrame(st.session_state.obs, index=[0]))[0]
+            knockout = pd.DataFrame(
+                {
+                    "home_team": winners[0::2],
+                    "away_team": winners[1::2],
+                },
+                columns=knockout.columns,
+            )
+            knockout.year = 0
 
-            obs = st.session_state.obs.copy()
-            obs["home_team"], obs["away_team"] = obs["away_team"], obs["home_team"]
-            pred_reversed = clf.predict(pd.DataFrame(obs, index=[0]))[0]
-
-            pred = np.round(np.mean([pred, pred_reversed])).astype(int)
-
-            if pred == 1:
-                st.success("Home Wins")
-            elif pred == 0:
-                st.info("Draw")
-            elif pred == -1:
-                st.error("Away Wins")
 
 # ---------- OLD ----------
 # st.header("Old Dataset")
