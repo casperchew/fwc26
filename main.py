@@ -2,25 +2,29 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import sklearn
-import streamlit as st
-from sklearn.compose import make_column_selector, make_column_transformer
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
+import streamlit as st
 from sklearn.neural_network import MLPRegressor
-from sklearn.pipeline import FunctionTransformer, make_pipeline
-from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder
+
+from utils import home_away_symmetric, home_away_swap
 
 st.set_page_config(page_title="FIFA World Cup 2026 Prediction Model", layout="wide")
 
 
-@st.cache_data
-def load_matches():
-    matches = pd.read_csv("worldcup/data-csv/matches.csv").dropna()
+def load_matches(matches_2022=True, matches_2026=True) -> pd.DataFrame:
+    matches = []
 
-    matches = matches[~matches.tournament_name.str.contains("Women")]
+    if matches_2022:
+        matches.append(pd.read_csv("worldcup/data-csv/matches.csv"))
+
+    if matches_2026:
+        matches.append(pd.read_csv("worldcup/data-csv/matches_2026.csv"))
+
+    matches = pd.concat(matches).convert_dtypes()
+
+    # matches = matches[~matches.tournament_name.str.contains("Women")]
 
     def str_to_datetime(s):
         return datetime.strptime(s, "%Y-%m-%d")
@@ -32,61 +36,29 @@ def load_matches():
     matches["match_hour"] = matches.match_time.str.split(":").str[0].astype(int)
     matches["match_minute"] = matches.match_time.str.split(":").str[1].astype(int)
 
-    st.header("Matches")
-    st.dataframe(matches)
-
     return matches[
         [
-            "tournament_name",
-            "match_id",
-            "stage_name",
             "match_year",
             "match_month",
             "match_day",
             "match_hour",
             "match_minute",
-            "home_team_id",
             "home_team_name",
-            "away_team_id",
             "away_team_name",
             "home_team_score",
             "away_team_score",
         ]
     ]
 
+st.sidebar.header("Select dataset:")
+matches_2022 = st.sidebar.checkbox(label="<2022")
+matches_2026 = st.sidebar.checkbox(label="2026")
 
-@st.cache_data
-def load_player_appearances():
-    player_appearances = pd.read_csv(
-        "worldcup/data-csv/player_appearances.csv"
-    ).dropna()
-
-    return player_appearances
-
-
-matches = load_matches()
-
-
+matches = load_matches(matches_2022=matches_2022, matches_2026=matches_2026)
 data = matches
 
 id_columns = data.columns[data.columns.str.endswith("id")]
 data = data.drop(columns=id_columns)
-
-data_reversed = data.rename(
-    columns={
-        "home_team_name": "away_team_name",
-        "away_team_name": "home_team_name",
-        "home_team_score": "away_team_score",
-        "away_team_score": "home_team_score",
-        "home_manager_name": "away_manager_name",
-        "away_manager_name": "home_manager_name",
-    }
-)
-
-data = pd.concat([data, data_reversed])
-
-st.header("Data")
-st.dataframe(data)
 
 st.sidebar.header("Select columns:")
 columns = {
@@ -101,50 +73,8 @@ columns = {
 for column in data.columns:
     columns[column] = st.sidebar.checkbox(column, value=columns.get(column, False))
 
-X = data[[column for column in columns if columns[column]]]
-y = data[["home_team_score", "away_team_score"]]
-
-st.header("X")
-st.dataframe(X)
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
-
-mlb = MultiLabelBinarizer()
-
-clf = make_pipeline(
-    # make_column_transformer(
-    #     (
-    #         FunctionTransformer(lambda x: np.sin(x / 12 * 2 * np.pi)),
-    #         make_column_selector("match_month"),
-    #     ),
-    #     (
-    #         FunctionTransformer(lambda x: np.sin(x / 31 * 2 * np.pi)),
-    #         make_column_selector("match_day"),
-    #     ),
-    #     (
-    #         FunctionTransformer(lambda x: np.sin(x / 24 * 2 * np.pi)),
-    #         make_column_selector("match_hour"),
-    #     ),
-    #     (
-    #         FunctionTransformer(lambda x: np.sin(x / 60 * 2 * np.pi)),
-    #         make_column_selector("match_minute"),
-    #     ),
-    #     remainder="passthrough",
-    # ),
-    OneHotEncoder(handle_unknown="warn"),
-    MLPRegressor(max_iter=100000, random_state=0),
-)
-
-clf.fit(X_train, y_train)
 
 obs = {}
-if columns["stage_name"]:
-    obs["stage_name"] = st.selectbox(
-        label="",
-        options=matches.stage_name.unique(),
-        index=None,
-        placeholder="Select Stage",
-    )
 
 if (
     columns["match_year"]
@@ -174,9 +104,52 @@ with col2:
         options=sorted(data.away_team_name.unique()),
     )
 
-home_team_score, away_team_score = clf.predict(
+X = data[[column for column in columns if columns[column]]]
+y = data[["home_team_score", "away_team_score"]]
+
+st.write(X)
+
+clf = make_pipeline(
+    # make_column_transformer(
+    #     (
+    #         FunctionTransformer(lambda x: np.sin(x / 12 * 2 * np.pi)),
+    #         make_column_selector("match_month"),
+    #     ),
+    #     (
+    #         FunctionTransformer(lambda x: np.sin(x / 31 * 2 * np.pi)),
+    #         make_column_selector("match_day"),
+    #     ),
+    #     (
+    #         FunctionTransformer(lambda x: np.sin(x / 24 * 2 * np.pi)),
+    #         make_column_selector("match_hour"),
+    #     ),
+    #     (
+    #         FunctionTransformer(lambda x: np.sin(x / 60 * 2 * np.pi)),
+    #         make_column_selector("match_minute"),
+    #     ),
+    #     remainder="passthrough",
+    # ),
+    OneHotEncoder(handle_unknown="warn"),
+    LinearRegression(),
+    # MLPRegressor(max_iter=100000, random_state=0),
+)
+
+X = home_away_symmetric(X)
+y = home_away_symmetric(y)
+
+clf.fit(X, y)
+
+pred = clf.predict(
     pd.DataFrame(obs, index=[0]).reindex(columns=clf.feature_names_in_)
 )[0]
+
+pred_reversed = clf.predict(
+    home_away_swap(pd.DataFrame(obs, index=[0])).reindex(columns=clf.feature_names_in_)
+)[0,::-1]
+
+st.write(pred)
+
+home_team_score, away_team_score = np.mean([pred, pred_reversed], axis=0)
 
 col1, col2 = st.columns(2)
 
