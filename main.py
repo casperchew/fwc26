@@ -162,16 +162,14 @@ clf = make_pipeline(
     #     remainder="passthrough",
     # ),
     OneHotEncoder(handle_unknown="warn"),
-    LinearRegression(),
-    # MLPRegressor(max_iter=100000, random_state=0),
+    # LinearRegression(),
+    MLPRegressor(max_iter=100000, random_state=0),
 )
 
 X = home_away_symmetric(X)
 y = home_away_symmetric(y)
 
 clf.fit(X, y)
-
-st.write(pd.DataFrame(obs, index=[0]).reindex(columns=clf.feature_names_in_))
 
 pred = pd.DataFrame(
     clf.predict(pd.DataFrame(obs, index=[0]).reindex(columns=clf.feature_names_in_)),
@@ -190,6 +188,7 @@ pred_reversed = home_away_swap(
 )
 
 pred = pd.concat([pred, pred_reversed]).mean().round(2)
+pred[["home_team_win", "away_team_win", "draw"]] = softmax(pred[["home_team_win", "away_team_win", "draw"]])
 
 st.write(pred)
 
