@@ -187,10 +187,9 @@ pred_reversed = home_away_swap(
     )
 )
 
-pred = pd.concat([pred, pred_reversed]).mean().round(2)
+pred = pd.concat([pred, pred_reversed]).mean()
 pred[["home_team_win", "away_team_win", "draw"]] = softmax(pred[["home_team_win", "away_team_win", "draw"]])
-
-st.write(pred)
+pred = pred.round(2)
 
 st.subheader("Scoreline:")
 

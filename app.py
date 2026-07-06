@@ -11,6 +11,8 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from utils import home_away_reverser
+
 st.set_page_config(page_title="FIFA World Cup 2026 Prediction Model", layout="wide")
 
 LATEST = True
