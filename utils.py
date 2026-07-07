@@ -19,6 +19,7 @@ def home_away_swap(df: pd.DataFrame) -> pd.DataFrame:
 def home_away_symmetric(df: pd.DataFrame):
     return pd.concat([df, df.rename(columns=home_away_rename)])
 
+
 def home_away_reverser(data):
     data_reversed = data.rename(
         columns={
