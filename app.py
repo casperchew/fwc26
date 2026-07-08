@@ -4,13 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from pandas.core.common import random_state
 from scipy.special import softmax
 from sklearn import clone
 from sklearn.compose import make_column_selector, make_column_transformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.neural_network import BernoulliRBM, MLPRegressor
+from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import FunctionTransformer, make_pipeline
 from sklearn.preprocessing import OneHotEncoder
 
@@ -30,14 +29,14 @@ def load_matches(matches_2022=True, matches_2026=True) -> pd.DataFrame:
     matches = []
 
     if matches_2022:
-        matches_2022_df = pd.read_csv("worldcup/data-csv/matches.csv")
+        matches_2022_df = pd.read_csv("data/matches.csv")
         matches_2022_df = matches_2022_df[
             ~matches_2022_df.tournament_name.str.contains("Women")
         ]
         matches.append(matches_2022_df)
 
     if matches_2026:
-        matches.append(pd.read_csv("worldcup/data-csv/matches_2026.csv"))
+        matches.append(pd.read_csv("data/matches_2026.csv"))
 
     matches = pd.concat(matches).convert_dtypes()
 
@@ -90,7 +89,7 @@ def get_trained_models(X, y):
 
     trained_models = []
     for name, model in [
-        ("Random Forest", RandomForestRegressor(random_state=0)),
+        # ("Random Forest", RandomForestRegressor(random_state=0)),
         ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
     ]:
         trained_models.append(
@@ -111,7 +110,7 @@ def get_trained_models(X, y):
 # Dataset options
 st.sidebar.header("Select dataset:")
 matches_2022 = st.sidebar.checkbox(label="<2022")
-matches_2026 = st.sidebar.checkbox(label="2026")
+matches_2026 = st.sidebar.checkbox(label="2026", value=True)
 
 data = load_matches(matches_2022=matches_2022, matches_2026=matches_2026)
 
@@ -283,7 +282,7 @@ for i, model in enumerate(models):
         st.session_state[model.name] = pred
 
         # Results
-        fig, ax = plt.subplots(figsize=(16, 1))
+        fig, ax = plt.subplots(figsize=(32, 1))
         ax.axis("off")
         ax.barh(0, pred.home_team_win, color="#505b73")
         ax.barh(0, pred.draw, left=pred.home_team_win, color="#ff9f0a")
