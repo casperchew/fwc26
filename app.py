@@ -109,21 +109,21 @@ def get_trained_models(X, y):
 
 # Dataset options
 st.sidebar.header("Select dataset:")
-matches_2022 = st.sidebar.checkbox(label="<2022")
-matches_2026 = st.sidebar.checkbox(label="2026", value=True)
+matches_2022 = st.sidebar.checkbox(label="FIFA World Cup 1930-2022")
+matches_2026 = st.sidebar.checkbox(label="FIFA World Cup 2026", value=True)
 
 data = load_matches(matches_2022=matches_2022, matches_2026=matches_2026)
 
 id_columns = data.columns[data.columns.str.endswith("id")]
 data = data.drop(columns=id_columns)
 
-st.sidebar.header("Select columns:")
+st.sidebar.header("Select attributes:")
 columns = {
     "match_year": True,
 }
 
 for column in columns:
-    columns[column] = st.sidebar.checkbox(label=column, value=columns[column])
+    columns[column] = st.sidebar.checkbox(label=column.replace("_", " ").capitalize(), value=columns[column])
 
 
 # Dataset
