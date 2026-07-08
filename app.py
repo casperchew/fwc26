@@ -200,7 +200,6 @@ cols = st.columns(len(models))
 
 for i, model in enumerate(models):
     with cols[i]:
-        st.header(model.name)
         scoreline_clf = model.scoreline_clf
         penalty_clf = model.penalty_clf
 
