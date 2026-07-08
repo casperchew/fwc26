@@ -19,13 +19,21 @@ st.set_page_config(page_title="FIFA World Cup 2026 Prediction Model", layout="wi
 
 
 class Model:
-    def __init__(self, name, scoreline_clf, penalty_clf):
+    def __init__(self, name, scoreline_clf, penalty_clf=None):
         self.name = name
         self.scoreline_clf = scoreline_clf
         self.penalty_clf = penalty_clf
 
 
-def load_matches(matches_2022=True, matches_2026=True) -> pd.DataFrame:
+def load_matches(
+    matches_2022=True,
+    matches_2026_groups=True,
+    matches_2026_ro32=True,
+    matches_2026_ro16=True,
+    matches_2026_qf=True,
+    matches_2026_sf=True,
+    matches_2026_finals=True,
+) -> pd.DataFrame:
     matches = []
 
     if matches_2022:
@@ -35,8 +43,30 @@ def load_matches(matches_2022=True, matches_2026=True) -> pd.DataFrame:
         ]
         matches.append(matches_2022_df)
 
-    if matches_2026:
-        matches.append(pd.read_csv("data/matches_2026.csv"))
+    if matches_2026_groups:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "group stage"])
+
+    if matches_2026_ro32:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "round of 32"])
+
+    if matches_2026_ro16:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "round of 16"])
+
+    if matches_2026_qf:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "quarter-finals"])
+
+    if matches_2026_sf:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "semi-finals"])
+
+    if matches_2026_finals:
+        df = pd.read_csv("data/matches_2026.csv")
+        matches.append(df[df.stage_name == "third-place match"])
+        matches.append(df[df.stage_name == "final"])
 
     matches = pd.concat(matches).convert_dtypes()
 
@@ -92,15 +122,20 @@ def get_trained_models(X, y):
         # ("Random Forest", RandomForestRegressor(random_state=0)),
         ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
     ]:
+        if X_penalty.empty:
+            penalty_clf = None
+        else:
+            penalty_clf = make_pipeline(
+                OneHotEncoder(handle_unknown="warn"), clone(model)
+            ).fit(X_penalty, y_penalty)
+
         trained_models.append(
             Model(
                 name=name,
                 scoreline_clf=make_pipeline(
                     OneHotEncoder(handle_unknown="warn"), clone(model)
                 ).fit(X, y_scoreline),
-                penalty_clf=make_pipeline(
-                    OneHotEncoder(handle_unknown="warn"), clone(model)
-                ).fit(X_penalty, y_penalty),
+                penalty_clf=penalty_clf,
             )
         )
 
@@ -110,9 +145,34 @@ def get_trained_models(X, y):
 # Dataset options
 st.sidebar.header("Select dataset:")
 matches_2022 = st.sidebar.checkbox(label="FIFA World Cup 1930-2022")
-matches_2026 = st.sidebar.checkbox(label="FIFA World Cup 2026", value=True)
+matches_2026_groups = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Group Stage", value=True
+)
+matches_2026_ro32 = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Round of 32", value=True
+)
+matches_2026_ro16 = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Round of 16", value=True
+)
+matches_2026_qf = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Quarterfinals", value=True
+)
+matches_2026_sf = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Semifinals", value=True
+)
+matches_2026_finals = st.sidebar.checkbox(
+    label="FIFA World Cup 2026 Finals and 3rd Place Match", value=True
+)
 
-data = load_matches(matches_2022=matches_2022, matches_2026=matches_2026)
+data = load_matches(
+    matches_2022=matches_2022,
+    matches_2026_groups=matches_2026_groups,
+    matches_2026_ro32=matches_2026_ro32,
+    matches_2026_ro16=matches_2026_ro16,
+    matches_2026_qf=matches_2026_qf,
+    matches_2026_sf=matches_2026_sf,
+    matches_2026_finals=matches_2026_finals,
+)
 
 id_columns = data.columns[data.columns.str.endswith("id")]
 data = data.drop(columns=id_columns)
@@ -123,7 +183,9 @@ columns = {
 }
 
 for column in columns:
-    columns[column] = st.sidebar.checkbox(label=column.replace("_", " ").capitalize(), value=columns[column])
+    columns[column] = st.sidebar.checkbox(
+        label=column.replace("_", " ").capitalize(), value=columns[column]
+    )
 
 
 # Dataset
@@ -224,34 +286,39 @@ for i, model in enumerate(models):
             )
         )
 
-        pred_penalty = pd.DataFrame(
-            model.penalty_clf.predict(
-                pd.DataFrame(obs, index=[0]).reindex(
-                    columns=penalty_clf.feature_names_in_
-                )
-            ),
-            columns=penalty_columns,
-        )
-
-        pred_penalty_reversed = home_away_swap(
-            pd.DataFrame(
-                model.penalty_clf.predict(
-                    home_away_swap(pd.DataFrame(obs, index=[0])).reindex(
-                        columns=penalty_clf.feature_names_in_
-                    )
-                ),
-                columns=penalty_columns,
-            )
-        )
-
         pred_scoreline = pd.concat([pred_scoreline, pred_scoreline_reversed]).mean()
         pred_scoreline[["home_team_win", "away_team_win", "draw"]] = softmax(
             pred_scoreline[["home_team_win", "away_team_win", "draw"]]
         )
 
-        pred_penalty = pd.concat([pred_penalty, pred_penalty_reversed]).mean()
+        pred_penalty = pd.Series(
+            [0, 0], index=["home_team_score_penalties", "away_team_score_penalties"]
+        )
+        if penalty_clf:
+            pred_penalty = pd.DataFrame(
+                model.penalty_clf.predict(
+                    pd.DataFrame(obs, index=[0]).reindex(
+                        columns=penalty_clf.feature_names_in_
+                    )
+                ),
+                columns=penalty_columns,
+            )
+
+            pred_penalty_reversed = home_away_swap(
+                pd.DataFrame(
+                    model.penalty_clf.predict(
+                        home_away_swap(pd.DataFrame(obs, index=[0])).reindex(
+                            columns=penalty_clf.feature_names_in_
+                        )
+                    ),
+                    columns=penalty_columns,
+                )
+            )
+
+            pred_penalty = pd.concat([pred_penalty, pred_penalty_reversed]).mean()
 
         pred = pd.concat([pred_scoreline, pred_penalty]).round(2)
+
         pred[
             [
                 "home_team_score",
