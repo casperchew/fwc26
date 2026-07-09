@@ -126,14 +126,14 @@ def get_trained_models(X, y):
             penalty_clf = None
         else:
             penalty_clf = make_pipeline(
-                OneHotEncoder(handle_unknown="warn"), clone(model)
+                OneHotEncoder(handle_unknown="infrequent_if_exist"), clone(model)
             ).fit(X_penalty, y_penalty)
 
         trained_models.append(
             Model(
                 name=name,
                 scoreline_clf=make_pipeline(
-                    OneHotEncoder(handle_unknown="warn"), clone(model)
+                    OneHotEncoder(), clone(model)
                 ).fit(X, y_scoreline),
                 penalty_clf=penalty_clf,
             )
