@@ -24,6 +24,7 @@ MarkupSafe==3.0.3
 matplotlib==3.11.0
 narwhals==2.23.0
 numpy==2.5.1
+nvidia-nccl-cu12==2.30.7
 packaging==26.2
 pandas==3.0.3
 pillow==12.3.0
@@ -50,3 +51,4 @@ urllib3==2.7.0
 uvicorn==0.50.2
 watchdog==6.0.0
 websockets==16.0
+xgboost==3.3.0
