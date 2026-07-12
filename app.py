@@ -338,7 +338,7 @@ for i, model in enumerate(models):
 
         pred_delta = pred
         if st.session_state.get(model.name) is not None:
-            pred_delta = (pred - st.session_state.get(model.name)).round(2)
+            pred_delta = (pred - st.session_state.get(model.name))
 
         st.session_state[model.name] = pred
 
