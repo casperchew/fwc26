@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from xgboost import XGBRegressor
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -120,7 +121,8 @@ def get_trained_models(X, y):
     trained_models = []
     for name, model in [
         # ("Random Forest", RandomForestRegressor(random_state=0)),
-        ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
+        ("XGBoost", XGBRegressor(random_state=0)),
+        # ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
     ]:
         if X_penalty.empty:
             penalty_clf = None
