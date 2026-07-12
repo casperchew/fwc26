@@ -391,14 +391,14 @@ for i, model in enumerate(models):
         with col1:
             st.metric(
                 label=obs["home_team_name"],
-                value=pred.home_team_score.round(0).astype(int),
+                value=pred.home_team_score.round(2),
                 delta=pred_delta.home_team_score,
             )
 
         with col2:
             st.metric(
                 label=obs["away_team_name"],
-                value=pred.away_team_score.round(0).astype(int),
+                value=pred.away_team_score.round(2),
                 delta=pred_delta.away_team_score,
             )
 
@@ -423,13 +423,13 @@ for i, model in enumerate(models):
         with col1:
             st.metric(
                 label=obs["home_team_name"],
-                value=pred.home_team_score_penalties.round(0).astype(int),
+                value=pred.home_team_score_penalties.round(2),
                 delta=pred_delta.home_team_score_penalties,
             )
 
         with col2:
             st.metric(
                 label=obs["away_team_name"],
-                value=pred.away_team_score_penalties.round(0).astype(int),
+                value=pred.away_team_score_penalties.round(2),
                 delta=pred_delta.home_team_score_penalties,
             )
