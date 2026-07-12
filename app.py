@@ -1,17 +1,12 @@
 from datetime import datetime
 
-from xgboost import XGBRegressor
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import streamlit as st
 from scipy.special import softmax
 from sklearn import clone
-from sklearn.compose import make_column_selector, make_column_transformer
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor
-from sklearn.pipeline import FunctionTransformer, make_pipeline
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 from utils import home_away_swap, home_away_symmetric
@@ -120,9 +115,7 @@ def get_trained_models(X, y):
 
     trained_models = []
     for name, model in [
-        # ("Random Forest", RandomForestRegressor(random_state=0)),
-        ("XGBoost", XGBRegressor(random_state=0)),
-        # ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
+        ("Neural Network", MLPRegressor(max_iter=1000000, random_state=0)),
     ]:
         if X_penalty.empty:
             penalty_clf = None
@@ -134,9 +127,9 @@ def get_trained_models(X, y):
         trained_models.append(
             Model(
                 name=name,
-                scoreline_clf=make_pipeline(
-                    OneHotEncoder(), clone(model)
-                ).fit(X, y_scoreline),
+                scoreline_clf=make_pipeline(OneHotEncoder(), clone(model)).fit(
+                    X, y_scoreline
+                ),
                 penalty_clf=penalty_clf,
             )
         )
