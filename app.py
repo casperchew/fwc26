@@ -174,7 +174,7 @@ data = data.drop(columns=id_columns)
 
 st.sidebar.header("Select attributes:")
 columns = {
-    "match_year": True,
+    "match_year": False,
 }
 
 for column in columns:
